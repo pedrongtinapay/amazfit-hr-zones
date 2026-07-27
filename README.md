@@ -1,15 +1,15 @@
 # Amazfit Heart Rate Zone Estimator
 
-A lightweight desktop application for analyzing heart rate zones from Amazfit GPX workout exports.
+A lightweight desktop application for analyzing heart rate zones from Amazfit workout data exports (GPX and FIT formats).
 
 ## Features
 
-- ✅ **Multi-file upload** - Load multiple GPX files at once
-- ✅ **Heart rate parsing** - Extracts HR data from GPX track points
+- ✅ **Multi-file upload** - Load multiple GPX or FIT files at once
+- ✅ **Heart rate parsing** - Extracts HR data from both GPX and FIT formats
 - ✅ **5-zone estimation** - Recovery, Aerobic, Tempo, Threshold, VO2Max
 - ✅ **Statistical analysis** - Calculates resting HR, max HR, and averages
 - ✅ **Visual progress bars** - Shows time spent in each zone with percentages
-- ✅ **No dependencies** - Uses only Python's built-in libraries
+- ✅ **Lightweight** - Pure Python with minimal dependencies
 
 ## Heart Rate Zones
 
@@ -23,7 +23,18 @@ The app uses the Heart Rate Reserve (HRR) method to calculate personalized zones
 
 ## Installation
 
-No installation needed! Just requires Python 3.6+.
+1. **Clone the repo:**
+```bash
+git clone https://github.com/pedrongtinapay/amazfit-hr-zones.git
+cd amazfit-hr-zones
+```
+
+2. **Install dependencies:**
+```bash
+pip install -r requirements.txt
+```
+
+That's it! `fitparse` is the only external dependency needed to parse FIT files.
 
 ## Usage
 
@@ -32,14 +43,19 @@ python amazfit_hr_zones.py
 ```
 
 Then:
-1. Click **"Add GPX Files"** to select your Amazfit exports (select multiple files)
+1. Click **"Add GPX Files"** (or FIT files) to select your Amazfit exports (select multiple files)
 2. Click **"Analyze Heart Rate Zones"** to see your breakdown
 3. View the results with zone ranges, time spent, and visual bars
+
+**Supported formats:**
+- **FIT** - Garmin/Amazfit native format (recommended)
+- **GPX** - GPS exchange format
 
 ## Requirements
 
 - Python 3.6 or higher
 - tkinter (usually included with Python)
+- fitparse (installed via `pip install -r requirements.txt`)
 
 ## How It Works
 

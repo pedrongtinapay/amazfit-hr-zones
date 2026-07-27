@@ -6,6 +6,12 @@ import os
 from collections import defaultdict
 from datetime import datetime
 
+try:
+    import fitparse
+    HAS_FITPARSE = True
+except ImportError:
+    HAS_FITPARSE = False
+
 class HeartRateZoneAnalyzer:
     def __init__(self, root):
         self.root = root
@@ -77,8 +83,8 @@ class HeartRateZoneAnalyzer:
     
     def add_files(self):
         files = filedialog.askopenfilenames(
-            title="Select GPX files",
-            filetypes=[("GPX files", "*.gpx"), ("All files", "*.*")]
+            title="Select workout files",
+            filetypes=[("GPX and FIT files", "*.gpx;*.fit"), ("GPX files", "*.gpx"), ("FIT files", "*.fit"), ("All files", "*.*")]
         )
         for file in files:
             if file not in self.files:
@@ -123,6 +129,32 @@ class HeartRateZoneAnalyzer:
                             hr_data.append(hr)
                 except (ValueError, AttributeError):
                     pass
+        except Exception as e:
+            messagebox.showerror("Parse Error", f"Error parsing {filepath}: {str(e)}")
+        
+        return hr_data
+    
+    def parse_fit(self, filepath):
+        """Extract heart rate data from FIT file"""
+        if not HAS_FITPARSE:
+            messagebox.showerror("Missing Dependency", "fitparse library is required for FIT files.\nInstall with: pip install fitparse")
+            return []
+        
+        hr_data = []
+        try:
+            fit_file = fitparse.FitFile(filepath)
+            
+            # Iterate through records in the FIT file
+            for record in fit_file.messages:
+                if record.name == 'record':
+                    for field in record.fields:
+                        if field.name == 'heart_rate' and field.value is not None:
+                            try:
+                                hr = int(field.value)
+                                if hr > 0:  # Filter out invalid readings
+                                    hr_data.append(hr)
+                            except (ValueError, TypeError):
+                                pass
         except Exception as e:
             messagebox.showerror("Parse Error", f"Error parsing {filepath}: {str(e)}")
         
@@ -196,19 +228,24 @@ class HeartRateZoneAnalyzer:
     
     def analyze(self):
         if not self.files:
-            messagebox.showwarning("No Files", "Please select at least one GPX file")
+            messagebox.showwarning("No Files", "Please select at least one workout file")
             return
         
         self.results_text.delete(1.0, tk.END)
         self.all_hr_data = []
         
         # Parse all files
-        self.results_text.insert(tk.END, "Parsing GPX files...\n\n")
+        self.results_text.insert(tk.END, "Parsing workout files...\n\n")
         self.root.update()
         
         file_count = 0
         for filepath in self.files:
-            hr_data = self.parse_gpx(filepath)
+            # Determine file type and parse accordingly
+            if filepath.lower().endswith('.fit'):
+                hr_data = self.parse_fit(filepath)
+            else:  # Default to GPX
+                hr_data = self.parse_gpx(filepath)
+            
             if hr_data:
                 file_count += 1
                 self.all_hr_data.extend(hr_data)
