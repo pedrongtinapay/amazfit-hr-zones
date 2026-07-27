@@ -165,10 +165,11 @@ class HeartRateZoneAnalyzer:
         try:
             fit_file = fitparse.FitFile(filepath)
             
-            cumulative_distance = 0
-            
             for record in fit_file.messages:
                 if record.name == 'record':
+                    hr = None
+                    distance = None
+                    
                     for field in record.fields:
                         if field.name == 'heart_rate' and field.value is not None:
                             try:
@@ -179,17 +180,23 @@ class HeartRateZoneAnalyzer:
                                 pass
                         elif field.name == 'distance' and field.value is not None:
                             try:
-                                dist = float(field.value) / 1000  # Convert meters to km
-                                if dist >= 0:
-                                    cumulative_distance = dist
+                                distance = float(field.value) / 1000  # Convert meters to km
                             except (ValueError, TypeError):
                                 pass
+                    
+                    # Add distance data point for each HR data point
+                    if hr is not None and hr > 0:
+                        if distance is not None and distance >= 0:
+                            distance_data.append(distance)
+                        else:
+                            distance_data.append(0)
             
-            # Estimate distance based on record count if not available
-            if cumulative_distance == 0 and len(hr_data) > 0:
-                cumulative_distance = len(hr_data) / 60  # Rough estimate: ~1km per minute
-            
-            distance_data = [cumulative_distance] * len(hr_data)
+            # If no distance data, estimate based on time
+            if not distance_data and len(hr_data) > 0:
+                # Estimate: assume average pace of 6 min/km
+                total_time_min = len(hr_data) / 60
+                total_distance = total_time_min / 6
+                distance_data = [total_distance * (i / len(hr_data)) for i in range(len(hr_data))]
         
         except Exception as e:
             messagebox.showerror("Parse Error", f"Error parsing {filepath}: {str(e)}")
@@ -249,7 +256,7 @@ class HeartRateZoneAnalyzer:
         # Calculate zone statistics
         zone_counts = defaultdict(int)
         zone_distances = defaultdict(float)
-        zone_paces = defaultdict(list)
+        zone_times = defaultdict(float)  # Time in each zone (in seconds)
         
         for i, hr in enumerate(all_hr_data):
             distance = all_distance_data[i] if i < len(all_distance_data) else 0
@@ -258,13 +265,18 @@ class HeartRateZoneAnalyzer:
                 zone = zones[zone_name]
                 if zone['min'] <= hr <= zone['max']:
                     zone_counts[zone_name] += 1
-                    zone_distances[zone_name] += distance / len(all_hr_data)
-                    
-                    # Estimate pace for this zone
-                    if distance > 0:
-                        time_minutes = len(all_hr_data) / 60
-                        pace = time_minutes / max(distance, 0.001)
-                        zone_paces[zone_name].append(pace)
+                    zone_distances[zone_name] += distance / len(all_hr_data) if len(all_hr_data) > 0 else 0
+                    zone_times[zone_name] += 1  # Each data point = 1 second
+        
+        # Calculate pace for each zone: pace (min/km) = time (min) / distance (km)
+        zone_paces = {}
+        for zone_name in zones:
+            if zone_distances[zone_name] > 0:
+                time_minutes = zone_times[zone_name] / 60
+                pace = time_minutes / zone_distances[zone_name]
+            else:
+                pace = 0
+            zone_paces[zone_name] = pace
         
         return {
             'zones': zones,
@@ -331,8 +343,7 @@ class HeartRateZoneAnalyzer:
             count = result['zone_counts'][zone_name]
             percentage = (count / stats['total_readings'] * 100) if stats['total_readings'] > 0 else 0
             
-            zone_paces = result['zone_paces'][zone_name]
-            avg_pace = sum(zone_paces) / len(zone_paces) if zone_paces else 0
+            avg_pace = result['zone_paces'][zone_name]
             
             self.results_text.insert(tk.END, f"{zone_name}\n", "zone_name")
             self.results_text.insert(tk.END, f"  HR Range: {zone['min']} - {zone['max']} bpm\n", "info")
@@ -380,8 +391,7 @@ class HeartRateZoneAnalyzer:
                 count = result['zone_counts'][zone_name]
                 percentage = (count / stats['total_readings'] * 100) if stats['total_readings'] > 0 else 0
                 
-                zone_paces = result['zone_paces'][zone_name]
-                avg_pace = sum(zone_paces) / len(zone_paces) if zone_paces else 0
+                avg_pace = result['zone_paces'][zone_name]
                 
                 row.extend([count, f"{percentage:.1f}", self.pace_to_string(avg_pace)])
             
