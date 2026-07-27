@@ -255,8 +255,8 @@ class HeartRateZoneAnalyzer:
         
         # Calculate zone statistics
         zone_counts = defaultdict(int)
-        zone_distances = defaultdict(float)
         zone_times = defaultdict(float)  # Time in each zone (in seconds)
+        zone_distance_ranges = defaultdict(lambda: {'min_dist': float('inf'), 'max_dist': 0})
         
         for i, hr in enumerate(all_hr_data):
             distance = all_distance_data[i] if i < len(all_distance_data) else 0
@@ -265,15 +265,28 @@ class HeartRateZoneAnalyzer:
                 zone = zones[zone_name]
                 if zone['min'] <= hr <= zone['max']:
                     zone_counts[zone_name] += 1
-                    zone_distances[zone_name] += distance / len(all_hr_data) if len(all_hr_data) > 0 else 0
                     zone_times[zone_name] += 1  # Each data point = 1 second
+                    
+                    # Track min/max cumulative distance in this zone
+                    if distance < zone_distance_ranges[zone_name]['min_dist']:
+                        zone_distance_ranges[zone_name]['min_dist'] = distance
+                    if distance > zone_distance_ranges[zone_name]['max_dist']:
+                        zone_distance_ranges[zone_name]['max_dist'] = distance
         
-        # Calculate pace for each zone: pace (min/km) = time (min) / distance (km)
+        # Calculate pace for each zone
         zone_paces = {}
+        zone_distances = {}
         for zone_name in zones:
-            if zone_distances[zone_name] > 0:
+            min_dist = zone_distance_ranges[zone_name]['min_dist']
+            max_dist = zone_distance_ranges[zone_name]['max_dist']
+            
+            # Zone distance = difference between max and min cumulative distance
+            zone_dist = max(0, max_dist - min_dist) if min_dist != float('inf') else 0
+            zone_distances[zone_name] = zone_dist
+            
+            if zone_dist > 0:
                 time_minutes = zone_times[zone_name] / 60
-                pace = time_minutes / zone_distances[zone_name]
+                pace = time_minutes / zone_dist
             else:
                 pace = 0
             zone_paces[zone_name] = pace
