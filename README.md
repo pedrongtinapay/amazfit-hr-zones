@@ -1,15 +1,21 @@
-# Amazfit Heart Rate Zone Estimator
+# Amazfit Heart Rate Zone Estimator with CSV Database & Pace Tracking
 
-A lightweight desktop application for analyzing heart rate zones from Amazfit workout data exports (GPX and FIT formats).
+A powerful desktop application for analyzing heart rate zones with pace calculations from Amazfit workout data exports (FIT format). Includes persistent CSV database with cumulative statistics.
 
 ## Features
 
-- ✅ **Multi-file upload** - Load multiple GPX or FIT files at once
-- ✅ **Heart rate parsing** - Extracts HR data from both GPX and FIT formats
-- ✅ **5-zone estimation** - Recovery, Aerobic, Tempo, Threshold, VO2Max
-- ✅ **Statistical analysis** - Calculates resting HR, max HR, and averages
-- ✅ **Visual progress bars** - Shows time spent in each zone with percentages
-- ✅ **Lightweight** - Pure Python with minimal dependencies
+- ✅ **Multi-file FIT upload** - Load multiple FIT files at once
+- ✅ **Heart rate zone estimation** - 5 personalized zones based on HRR
+- ✅ **Pace tracking** - Average pace for each HR zone
+- ✅ **CSV database** - All results stored and persisted
+- ✅ **Running cumulative stats** - Updates with each analysis:
+  - Total sessions analyzed
+  - Total HR readings
+  - Total distance covered
+  - Weighted average HR
+  - Overall max HR
+- ✅ **Session history** - View all past analyses in tabular format
+- ✅ **No external dependencies** - Pure Python with tkinter
 
 ## Heart Rate Zones
 
@@ -34,22 +40,38 @@ cd amazfit-hr-zones
 pip install -r requirements.txt
 ```
 
-That's it! `fitparse` is the only external dependency needed to parse FIT files.
-
 ## Usage
 
 ```bash
 python amazfit_hr_zones.py
 ```
 
-Then:
-1. Click **"Add GPX Files"** (or FIT files) to select your Amazfit exports (select multiple files)
-2. Click **"Analyze Heart Rate Zones"** to see your breakdown
-3. View the results with zone ranges, time spent, and visual bars
+### Tabs
 
-**Supported formats:**
+**Analysis Tab:**
+1. Click **"Add FIT Files"** to select your Amazfit exports
+2. Click **"Analyze & Save to Database"** to process
+3. View zone breakdown with heart rate ranges and pace
+
+**History & Cumulative Tab:**
+- **Cumulative stats** - Running totals updated with each analysis
+- **Session history** - CSV view of all past analyses
+- **Auto-refresh** - Click "Refresh History" to reload
+
+## Database
+
+Results are automatically saved to `hr_zone_data.csv` with:
+- Timestamp of analysis
+- Files analyzed
+- HR statistics (resting, avg, max)
+- Zone-by-zone breakdown:
+  - Time in zone (readings & percentage)
+  - Average pace per zone (min/km)
+
+## Supported Formats
+
 - **FIT** - Garmin/Amazfit native format (recommended)
-- **GPX** - GPS exchange format
+- **GPX** - GPS exchange format (legacy)
 
 ## Requirements
 
@@ -59,28 +81,37 @@ Then:
 
 ## How It Works
 
-1. **Parses GPX files** - Reads TrackPoint extensions with heart rate data
+1. **Parses FIT files** - Extracts heart rate and distance data from Amazfit exports
 2. **Calculates statistics** - Determines resting HR, max HR, and heart rate reserve
-3. **Estimates zones** - Divides reserve into 5 zones based on standard training intensity levels
-4. **Analyzes distribution** - Counts readings in each zone and calculates percentages
+3. **Estimates zones** - Divides reserve into 5 zones based on training intensity
+4. **Calculates pace** - Average pace per zone from distance/time data
+5. **Persists data** - Saves all results to CSV database
+6. **Tracks cumulative** - Running totals update with each analysis
 
 ## Example Output
 
+**Current Session:**
 ```
-Files Processed: 3
-Total HR Readings: 15,234
-Resting HR: 58 bpm
-Average HR: 142.5 bpm
-Max HR: 178 bpm
-
 Zone 1 - Recovery
-  Range: 58 - 118 bpm
+  HR Range: 58 - 118 bpm
   Time in Zone: 2,543 readings (16.7%)
-  
-Zone 2 - Aerobic
-  Range: 118 - 124 bpm
-  Time in Zone: 1,890 readings (12.4%)
-  ...
+  Average Pace: 6:45 min/km
+  ████░░░░░░░░░░░░░░░░
+
+Zone 5 - VO2Max
+  HR Range: 148 - 178 bpm
+  Time in Zone: 892 readings (5.8%)
+  Average Pace: 4:12 min/km
+  █░░░░░░░░░░░░░░░░░░
+```
+
+**Cumulative Stats (auto-updated):**
+```
+Total Sessions: 5
+Total HR Readings: 75,234
+Total Distance: 54.8 km
+Avg HR (weighted): 142.3 bpm
+Overall Max HR: 178 bpm
 ```
 
 ## License
