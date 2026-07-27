@@ -158,12 +158,13 @@ class HeartRateZoneAnalyzer:
             self.file_listbox.insert(tk.END, os.path.basename(file))
     
     def parse_fit(self, filepath):
-        """Extract heart rate data from FIT file"""
+        """Extract heart rate and distance data from FIT file"""
         if not HAS_FITPARSE:
             messagebox.showerror("Missing Dependency", "fitparse library is required.\nInstall with: pip install fitparse")
-            return [], 0
+            return [], [], 0
         
         hr_data = []
+        distance_data = []  # Cumulative distance at each HR reading
         total_distance = 0
         
         try:
@@ -171,6 +172,9 @@ class HeartRateZoneAnalyzer:
             
             for record in fit_file.messages:
                 if record.name == 'record':
+                    hr = None
+                    distance = None
+                    
                     for field in record.fields:
                         if field.name == 'heart_rate' and field.value is not None:
                             try:
@@ -181,22 +185,29 @@ class HeartRateZoneAnalyzer:
                                 pass
                         elif field.name == 'distance' and field.value is not None:
                             try:
-                                # Distance is cumulative - we want the LAST value
-                                dist = float(field.value) / 1000  # Convert meters to km
-                                total_distance = max(total_distance, dist)
+                                distance = float(field.value) / 1000  # Convert meters to km
+                                total_distance = max(total_distance, distance)
                             except (ValueError, TypeError):
                                 pass
+                    
+                    # Only add distance if we have HR reading
+                    if hr is not None and hr > 0:
+                        if distance is not None:
+                            distance_data.append(distance)
+                        else:
+                            distance_data.append(total_distance)
             
             # If no distance data, estimate based on time
             if total_distance == 0 and len(hr_data) > 0:
                 # Estimate: assume average pace of 6 min/km
                 total_time_min = len(hr_data) / 60
                 total_distance = total_time_min / 6
+                distance_data = [total_distance * (i / len(hr_data)) for i in range(len(hr_data))]
         
         except Exception as e:
             messagebox.showerror("Parse Error", f"Error parsing {filepath}: {str(e)}")
         
-        return hr_data, total_distance
+        return hr_data, distance_data, total_distance
     
     def pace_to_string(self, pace_min_per_km):
         """Convert pace (min/km) to MM:SS format"""
@@ -206,9 +217,9 @@ class HeartRateZoneAnalyzer:
         seconds = int((pace_min_per_km - minutes) * 60)
         return f"{minutes}:{seconds:02d}"
     
-    def estimate_zones(self, all_hr_data, total_distance):
+    def estimate_zones(self, all_hr_data, all_distance_data, total_distance):
         """Estimate heart rate zones with pace calculations"""
-        if not all_hr_data:
+        if not all_hr_data or not all_distance_data:
             return None
         
         min_hr = min(all_hr_data)
@@ -248,48 +259,46 @@ class HeartRateZoneAnalyzer:
             }
         }
         
-        # Calculate zone statistics
+        # Calculate zone statistics - compute pace for each data point
         zone_counts = defaultdict(int)
-        zone_times = defaultdict(float)  # Time in each zone (in seconds)
+        zone_paces = defaultdict(list)  # Collect all paces for each zone
         
-        for hr in all_hr_data:
+        for i, hr in enumerate(all_hr_data):
+            # Calculate pace at this point (distance change per 1 second)
+            if i > 0 and len(all_distance_data) > i:
+                distance_delta = all_distance_data[i] - all_distance_data[i-1]
+                if distance_delta > 0:
+                    # pace = (1 second / 60) minutes / distance_km
+                    pace = (1 / 60) / distance_delta
+                else:
+                    pace = 0
+            else:
+                pace = 0
+            
+            # Assign to zone
             for zone_name in zones:
                 zone = zones[zone_name]
                 if zone['min'] <= hr <= zone['max']:
                     zone_counts[zone_name] += 1
-                    zone_times[zone_name] += 1  # Each data point = 1 second
+                    if pace > 0 and pace < 60:  # Filter: pace between 0 and 60 min/km
+                        zone_paces[zone_name].append(pace)
+                    break
         
-        # Calculate pace for each zone
-        # Pace = (time in zone in minutes) / (distance in zone in km)
-        # Distance in zone = (time in zone / total time) * total distance
-        total_time_sec = len(all_hr_data)
-        total_time_min = total_time_sec / 60
-        
-        zone_paces = {}
+        # Calculate average pace for each zone
+        zone_paces_avg = {}
         zone_distances = {}
         for zone_name in zones:
-            zone_time_sec = zone_times[zone_name]
-            zone_time_min = zone_time_sec / 60
-            
-            # Calculate distance covered in this zone (proportional to time)
-            if total_time_sec > 0:
-                zone_dist = (zone_time_sec / total_time_sec) * total_distance
+            if zone_paces[zone_name]:
+                zone_paces_avg[zone_name] = sum(zone_paces[zone_name]) / len(zone_paces[zone_name])
             else:
-                zone_dist = 0
-            
-            zone_distances[zone_name] = zone_dist
-            
-            if zone_dist > 0:
-                pace = zone_time_min / zone_dist
-            else:
-                pace = 0
-            zone_paces[zone_name] = pace
+                zone_paces_avg[zone_name] = 0
+            zone_distances[zone_name] = 0
         
         return {
             'zones': zones,
             'zone_counts': zone_counts,
             'zone_distances': zone_distances,
-            'zone_paces': zone_paces,
+            'zone_paces': zone_paces_avg,
             'stats': {
                 'min_hr': min_hr,
                 'max_hr': max_hr,
@@ -307,6 +316,7 @@ class HeartRateZoneAnalyzer:
         
         self.results_text.delete(1.0, tk.END)
         self.all_hr_data = []
+        self.all_distance_data = []
         self.total_distance = 0
         
         self.results_text.insert(tk.END, "Parsing FIT files...\n\n")
@@ -314,12 +324,13 @@ class HeartRateZoneAnalyzer:
         
         file_count = 0
         for filepath in self.files:
-            hr_data, distance = self.parse_fit(filepath)
+            hr_data, distance_data, total_dist = self.parse_fit(filepath)
             if hr_data:
                 file_count += 1
                 self.all_hr_data.extend(hr_data)
-                self.total_distance += distance
-                self.results_text.insert(tk.END, f"✓ {os.path.basename(filepath)}: {len(hr_data)} HR readings, {distance:.2f} km\n")
+                self.all_distance_data.extend(distance_data)
+                self.total_distance += total_dist
+                self.results_text.insert(tk.END, f"✓ {os.path.basename(filepath)}: {len(hr_data)} HR readings, {total_dist:.2f} km\n")
             else:
                 self.results_text.insert(tk.END, f"✗ {os.path.basename(filepath)}: No HR data found\n")
         
@@ -327,7 +338,7 @@ class HeartRateZoneAnalyzer:
             messagebox.showerror("No Data", "No heart rate data found in any files")
             return
         
-        result = self.estimate_zones(self.all_hr_data, self.total_distance)
+        result = self.estimate_zones(self.all_hr_data, self.all_distance_data, self.total_distance)
         
         self.results_text.delete(1.0, tk.END)
         
